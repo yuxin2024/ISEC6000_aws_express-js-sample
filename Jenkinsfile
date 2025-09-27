@@ -43,24 +43,39 @@ pipeline {
     
     // Build docker image using DinD
     stage('Build Image') {
-      agent { docker { image 'docker:24.0-cli'; args '-v /certs/client:/certs/client:ro' } }
       steps {
-        sh 'docker build -t $IMAGE:$TAG -t $IMAGE:latest .'
-        echo 'Image built sucessful'
+        sh '''
+          echo "== Docker version (should show Server for DinD) =="
+          docker version
+          echo "Build image"
+          docker build -t $IMAGE:$TAG -t $IMAGE:latest .
+        '''
       }
     }
 
+
     //Push image to docker hub
-    stage('Push') {
-      agent { docker { image 'docker:24.0-cli'; args '-v /certs/client:/certs/client:ro' } }
+    stage('Push Image') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'U', passwordVariable: 'P')]) {
-          sh 'echo "$P" | docker login -u "$U" --password-stdin'
-          sh 'docker push $IMAGE:$TAG && docker push $IMAGE:latest'
-        }
-        echo 'Image pushed to docker hub'
+          sh '''
+            docker version
+            echo "$P" | docker login -u "$U" --password-stdin
+            docker push $IMAGE:$TAG
+            docker push $IMAGE:latest
+          '''
       }
     }
 
   }
+  
 }
+
+post {
+    always {
+      archiveArtifacts artifacts: '**/npm-debug.log', allowEmptyArchive: true
+    }
+  }
+}
+
+
