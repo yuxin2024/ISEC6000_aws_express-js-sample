@@ -36,7 +36,7 @@ pipeline {
     stage('Dependency Scan') {
       agent { docker { image 'node:16'; args '-u root' } }
       steps {
-        sh 'npm audit --audit-level=high'   
+        sh 'npm audit --json --audit-level=high > scanlog.json'   
         echo 'Security scan passed'
       }
     }
@@ -45,7 +45,6 @@ pipeline {
     stage('Build Image') {
       steps {
         sh '''
-          echo "== Docker version (should show Server for DinD) =="
           docker version
           echo "Build image"
           docker build -t $IMAGE:$TAG -t $IMAGE:latest .
@@ -65,6 +64,7 @@ pipeline {
             docker push $IMAGE:latest
           '''
       }
+      echo 'Image pushed to docker hubc'
     }
 
   }
@@ -73,7 +73,7 @@ pipeline {
 
 post {
     always {
-      archiveArtifacts artifacts: '**/npm-debug.log', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'scanlog.json', allowEmptyArchive: true
     }
   }
 }
