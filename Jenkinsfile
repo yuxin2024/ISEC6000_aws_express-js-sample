@@ -75,7 +75,8 @@ pipeline {
       agent {
         docker {
           image 'docker:24.0-cli'
-          args "-u root -v /certs/client:/certs/client:ro --network ${COMPOSE_NET}"
+          args "-u root --volumes-from jenkins --network ${env.COMPOSE_NET}"
+
         }
       }
       steps {
@@ -102,7 +103,8 @@ pipeline {
       agent {
         docker {
           image 'docker:24.0-cli'
-          args "-u root -v /certs/client:/certs/client:ro --network ${COMPOSE_NET}"
+          args "-u root --volumes-from jenkins --network ${env.COMPOSE_NET}"
+
         }
       }
       steps {
