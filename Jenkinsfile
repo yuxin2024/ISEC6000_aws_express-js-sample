@@ -5,7 +5,7 @@ pipeline {
   // Use Node 16 Docker image as the build agent
   agent { 
     docker { 
-      image 'node:16'; 
+      image 'node:16-bullseye'
       args '-u root' 
     } 
   }
