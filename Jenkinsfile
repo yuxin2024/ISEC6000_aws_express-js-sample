@@ -71,47 +71,40 @@ pipeline {
     
     // Build docker image using DinD
     stage('Build Image') {
-      agent {
-        docker {
-          image 'docker:24.0-cli'
-          args '-u root --volumes-from jenkins --network project2-compose_jenkins'
-        }
-      }
+      agent any
       steps {
         sh '''
-          set -eu
+          docker --version | tee buildimage.log
           docker -H "$DOCKER_HOST" --tlsverify \
             --tlscacert="$DOCKER_CERT_PATH/ca.pem" \
             --tlscert="$DOCKER_CERT_PATH/cert.pem" \
-            --tlskey="$DOCKER_CERT_PATH/key.pem" version | tee buildimage.log
+            --tlskey="$DOCKER_CERT_PATH/key.pem" version | tee -a buildimage.log
 
-          echo "Build image $IMAGE:$TAG" | tee -a buildimage.log
+          echo "[INFO] Building image $IMAGE:$TAG..." | tee -a buildimage.log
           docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" . 2>&1 | tee -a buildimage.log
         '''
+        echo 'Build image finished.'
       }
     }
 
 
     //Push image to docker hub
    stage('Push Image') {
-      agent {
-        docker {
-          image 'docker:24.0-cli'
-          args '-u root --volumes-from jenkins --network project2-compose_jenkins'
-        }
-      }
+      agent any
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'U', passwordVariable: 'P')]) {
           sh '''
-            set -eu
             echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee push.log
             docker push "$IMAGE:$TAG"   2>&1 | tee -a push.log
             docker push "$IMAGE:latest" 2>&1 | tee -a push.log
+
             docker logout || true
           '''
+          echo 'Image pushed to docker hub'
         }
       }
-  }
+
+    }
 
 
   }
