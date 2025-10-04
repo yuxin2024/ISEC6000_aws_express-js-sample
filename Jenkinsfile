@@ -71,7 +71,6 @@ pipeline {
     
     // Build docker image using DinD
     stage('Build Image') {
-      stage('Build Image') {
       agent {
         docker {
           image 'docker:24.0-cli'
@@ -95,23 +94,23 @@ pipeline {
 
     //Push image to docker hub
    stage('Push Image') {
-    agent {
-      docker {
-        image 'docker:24.0-cli'
-        args '-u root --volumes-from jenkins --network project2-compose_jenkins'
+      agent {
+        docker {
+          image 'docker:24.0-cli'
+          args '-u root --volumes-from jenkins --network project2-compose_jenkins'
+        }
       }
-    }
-    steps {
-      withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'U', passwordVariable: 'P')]) {
-        sh '''
-          set -eu
-          echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee push.log
-          docker push "$IMAGE:$TAG"   2>&1 | tee -a push.log
-          docker push "$IMAGE:latest" 2>&1 | tee -a push.log
-          docker logout || true
-        '''
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'U', passwordVariable: 'P')]) {
+          sh '''
+            set -eu
+            echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee push.log
+            docker push "$IMAGE:$TAG"   2>&1 | tee -a push.log
+            docker push "$IMAGE:latest" 2>&1 | tee -a push.log
+            docker logout || true
+          '''
+        }
       }
-    }
   }
 
 
