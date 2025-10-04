@@ -21,6 +21,7 @@ pipeline {
     DOCKER_TLS_VERIFY = '1'
     IMAGE             = 'zoezhou2024/assignment2'
     TAG               = "build-${env.BUILD_NUMBER}"
+    COMPOSE_NET       = 'project2-compose_jenkins'
   }
 
   stages {
@@ -74,7 +75,7 @@ pipeline {
       agent {
         docker {
           image 'docker:24.0-cli'
-          args '-u root -v /certs/client:/certs/client:ro'
+          args "-u root -v /certs/client:/certs/client:ro --network ${COMPOSE_NET}"
         }
       }
       steps {
@@ -82,7 +83,10 @@ pipeline {
           apk add --no-cache bash >/dev/null
           bash -lc '
             set -euo pipefail
-            docker version 2>&1 | tee buildimage.log
+            docker -H "$DOCKER_HOST" --tlsverify \
+            --tlscacert=$DOCKER_CERT_PATH/ca.pem \
+            --tlscert=$DOCKER_CERT_PATH/cert.pem \
+            --tlskey=$DOCKER_CERT_PATH/key.pem version | tee -a buildimage.log
             echo "Build image $IMAGE:$TAG" | tee -a buildimage.log
             docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" . 2>&1 | tee -a buildimage.log
           '
@@ -98,7 +102,7 @@ pipeline {
       agent {
         docker {
           image 'docker:24.0-cli'
-          args '-u root -v /certs/client:/certs/client:ro'
+          args "-u root -v /certs/client:/certs/client:ro --network ${COMPOSE_NET}"
         }
       }
       steps {
