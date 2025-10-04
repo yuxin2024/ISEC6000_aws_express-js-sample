@@ -2,13 +2,7 @@
 
 pipeline {
 
-  // Use Node 16 Docker image as the build agent
-  agent { 
-    docker { 
-      image 'node:16-bullseye'
-      args '-u root' 
-    } 
-  }
+  agent any
 
   options{
     timestamps()
@@ -27,6 +21,12 @@ pipeline {
 
     // Build and install dependentcies use node 16
     stage('Build') { 
+      agent { 
+        docker { 
+          image 'node:16-bullseye'
+          args '-u root' 
+        } 
+      }
       steps {
         sh '''
           bash -lc '
@@ -41,6 +41,12 @@ pipeline {
     
     // Run unit test.
     stage('Test') {
+      agent { 
+        docker { 
+          image 'node:16-bullseye'
+          args '-u root' 
+        } 
+      }
       steps {
         sh '''
           bash -lc '
@@ -54,6 +60,12 @@ pipeline {
 
     // Snyk scan before building image, fail on high/critical issues.
     stage('Dependency Scan') {
+      agent { 
+        docker { 
+          image 'node:16-bullseye'
+          args '-u root' 
+        } 
+      }
       steps {
         withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
           sh '''
@@ -63,7 +75,6 @@ pipeline {
               npx snyk@latest test --severity-threshold=high 2>&1 | tee snyk.log
             '
           '''
-
           echo 'Snyk scan finished'
         }
       }
@@ -71,44 +82,33 @@ pipeline {
     
     // Build docker image using DinD
     stage('Build Image') {
-      agent any
       steps {
         sh '''
-          docker --version | tee buildimage.log
-          docker -H "$DOCKER_HOST" --tlsverify \
-            --tlscacert="$DOCKER_CERT_PATH/ca.pem" \
-            --tlscert="$DOCKER_CERT_PATH/cert.pem" \
-            --tlskey="$DOCKER_CERT_PATH/key.pem" version | tee -a buildimage.log
-
-          echo "[INFO] Building image $IMAGE:$TAG..." | tee -a buildimage.log
+          docker version 2>&1 | tee buildimage.log
+          echo "Build image" | tee -a buildimage.log
           docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" . 2>&1 | tee -a buildimage.log
         '''
-        echo 'Build image finished.'
+        echo 'build image finished'
       }
     }
 
 
     //Push image to docker hub
-   stage('Push Image') {
-      agent any
-      steps {
-        withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'U', passwordVariable: 'P')]) {
-          sh '''
-            echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee push.log
-            docker push "$IMAGE:$TAG"   2>&1 | tee -a push.log
-            docker push "$IMAGE:latest" 2>&1 | tee -a push.log
-
-            docker logout || true
-          '''
-          echo 'Image pushed to docker hub'
+    stage('Push Image') {
+        steps {
+          withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'U', passwordVariable: 'P')]) {
+            sh '''
+              docker version 2>&1 | tee push.log
+              echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee -a push.log
+              docker push "$IMAGE:$TAG"    2>&1 | tee -a push.log
+              docker push "$IMAGE:latest"  2>&1 | tee -a push.log
+              docker logout || true
+            '''
+          }
+          echo 'Image pushed to docker hubc'
         }
       }
-
     }
-
-
-  }
-
   post {
       always {
         archiveArtifacts artifacts: '**/*.log', allowEmptyArchive: true
