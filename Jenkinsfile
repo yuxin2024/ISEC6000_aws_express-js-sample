@@ -72,59 +72,45 @@ pipeline {
     
     // Build docker image using DinD
     stage('Build Image') {
-      agent {
-        docker {
-          image 'docker:24.0-cli'
-          args "-u root --volumes-from jenkins --network ${env.COMPOSE_NET}"
-
-        }
-      }
+      agent any   
       steps {
         sh '''
-          apk add --no-cache bash >/dev/null
           bash -lc '
             set -euo pipefail
             docker -H "$DOCKER_HOST" --tlsverify \
-            --tlscacert=$DOCKER_CERT_PATH/ca.pem \
-            --tlscert=$DOCKER_CERT_PATH/cert.pem \
-            --tlskey=$DOCKER_CERT_PATH/key.pem version | tee -a buildimage.log
+              --tlscacert=$DOCKER_CERT_PATH/ca.pem \
+              --tlscert=$DOCKER_CERT_PATH/cert.pem \
+              --tlskey=$DOCKER_CERT_PATH/key.pem version 2>&1 | tee buildimage.log
+
             echo "Build image $IMAGE:$TAG" | tee -a buildimage.log
             docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" . 2>&1 | tee -a buildimage.log
           '
         '''
-
         echo 'Image build successfully'
       }
-      
     }
 
     //Push image to docker hub
     stage('Push Image') {
-      agent {
-        docker {
-          image 'docker:24.0-cli'
-          args "-u root --volumes-from jenkins --network ${env.COMPOSE_NET}"
-
-        }
-      }
+      agent any   // 同样在控制器上执行
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'U', passwordVariable: 'P')]) {
           sh '''
-            apk add --no-cache bash >/dev/null
             bash -lc '
               set -euo pipefail
-              docker version 2>&1 
-              echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee push.log
+              docker version 2>&1 | tee push.log
+
+              echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee -a push.log
               docker push "$IMAGE:$TAG"   2>&1 | tee -a push.log
               docker push "$IMAGE:latest" 2>&1 | tee -a push.log
               docker logout || true
             '
           '''
-
         }
         echo 'Image pushed to docker hub'
       }
-    }  
+    }
+
   }
 
   post {
