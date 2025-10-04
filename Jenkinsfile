@@ -9,6 +9,10 @@ pipeline {
       args '-u root' 
     } 
   }
+
+  options{
+    timestamps()
+  }
   
   // Defined environment variables for DinD connection and image.
   environment {
@@ -24,10 +28,13 @@ pipeline {
     // Build and install dependentcies use node 16
     stage('Build') { 
       steps {
-         sh '''
-          set -o pipefail
-          (npm ci || npm install --save) 2>&1 | tee build.log
+        sh '''
+          bash -lc '
+            set -euo pipefail
+            (npm ci || npm install --save) 2>&1 | tee build.log
+          '
         '''
+
         echo 'Building the application'
       }
     }
@@ -36,8 +43,10 @@ pipeline {
     stage('Test') {
       steps {
         sh '''
-          set -o pipefail
-          (npm test || echo "no tests") 2>&1 | tee test.log
+          bash -lc '
+            set -euo pipefail
+            (npm test || echo "no tests") 2>&1 | tee test.log
+          '
         '''
         echo 'Testing the application'
       }
@@ -48,10 +57,13 @@ pipeline {
       steps {
         withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
           sh '''
-            set -o pipefail
-            npx snyk@latest auth "$SNYK_TOKEN"
-            npx snyk@latest test --severity-threshold=high 2>&1 | tee snyk.log
+            bash -lc '
+              set -euo pipefail
+              npx snyk@latest auth "$SNYK_TOKEN" 
+              npx snyk@latest test --severity-threshold=high 2>&1 | tee snyk.log
+            '
           '''
+
           echo 'Snyk scan finished'
         }
       }
@@ -67,14 +79,15 @@ pipeline {
       }
       steps {
         sh '''
-          set -o pipefail
-          docker version            2>&1 | tee buildimage.log
-          echo "Build image $IMAGE:$TAG" | tee -a buildimage.log
-          docker build \
-            -t $IMAGE:$TAG \
-            -t $IMAGE:latest \
-            .                       2>&1 | tee -a buildimage.log
+          apk add --no-cache bash >/dev/null
+          bash -lc '
+            set -euo pipefail
+            docker version 2>&1 | tee buildimage.log
+            echo "Build image $IMAGE:$TAG" | tee -a buildimage.log
+            docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" . 2>&1 | tee -a buildimage.log
+          '
         '''
+
         echo 'Image build successfully'
       }
       
@@ -91,12 +104,17 @@ pipeline {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'U', passwordVariable: 'P')]) {
           sh '''
-            set -o pipefail
-            docker version                  2>&1 | tee push.log
-            echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee -a push.log
-            docker push $IMAGE:$TAG         2>&1 | tee -a push.log
-            docker push $IMAGE:latest       2>&1 | tee -a push.log
+            apk add --no-cache bash >/dev/null
+            bash -lc '
+              set -euo pipefail
+              docker version 2>&1 
+              echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee push.log
+              docker push "$IMAGE:$TAG"   2>&1 | tee -a push.log
+              docker push "$IMAGE:latest" 2>&1 | tee -a push.log
+              docker logout || true
+            '
           '''
+
         }
         echo 'Image pushed to docker hub'
       }
@@ -105,7 +123,7 @@ pipeline {
 
   post {
       always {
-        archiveArtifacts artifacts: '*.log', allowEmptyArchive: true
+        archiveArtifacts artifacts: '**/*.log', allowEmptyArchive: true
       }
     }
 }
