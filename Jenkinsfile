@@ -1,7 +1,14 @@
 // Jenkinsfile - Task3
 
 pipeline {
-  agent any
+
+  // Use Node 16 Docker image as the build agent
+  agent { 
+    docker { 
+      image 'node:16'; 
+      args '-u root' 
+    } 
+  }
   
   // Defined environment variables for DinD connection and image.
   environment {
@@ -15,67 +22,92 @@ pipeline {
   stages {
 
     // Build and install dependentcies use node 16
-    stage('Build') {
-      agent { docker { image 'node:16'; args '-u root' } }
+    stage('Build') { 
       steps {
-        sh 'npm ci || npm install'
+         sh '''
+          set -o pipefail
+          (npm ci || npm install --save) 2>&1 | tee build.log
+        '''
         echo 'Building the application'
       }
     }
     
     // Run unit test.
     stage('Test') {
-      agent { docker { image 'node:16'; args '-u root' } }
       steps {
-        sh 'npm test || echo "no tests"'
+        sh '''
+          set -o pipefail
+          (npm test || echo "no tests") 2>&1 | tee test.log
+        '''
         echo 'Testing the application'
       }
     }
 
-    // Sacn before building image, fail on high/critical issues.
+    // Snyk scan before building image, fail on high/critical issues.
     stage('Dependency Scan') {
-      agent { docker { image 'node:16'; args '-u root' } }
       steps {
-        sh 'npm audit --json --audit-level=high > scanlog.json'   
-        echo 'Security scan passed'
+        withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+          sh '''
+            set -o pipefail
+            npx snyk@latest auth "$SNYK_TOKEN"
+            npx snyk@latest test --severity-threshold=high 2>&1 | tee snyk.log
+          '''
+          echo 'Snyk scan finished'
+        }
       }
     }
     
     // Build docker image using DinD
     stage('Build Image') {
+      agent {
+        docker {
+          image 'docker:24.0-cli'
+          args '-u root -v /certs/client:/certs/client:ro'
+        }
+      }
       steps {
         sh '''
-          docker version
-          echo "Build image"
-          docker build -t $IMAGE:$TAG -t $IMAGE:latest .
+          set -o pipefail
+          docker version            2>&1 | tee buildimage.log
+          echo "Build image $IMAGE:$TAG" | tee -a buildimage.log
+          docker build \
+            -t $IMAGE:$TAG \
+            -t $IMAGE:latest \
+            .                       2>&1 | tee -a buildimage.log
         '''
+        echo 'Image build successfully'
       }
+      
     }
-
 
     //Push image to docker hub
     stage('Push Image') {
+      agent {
+        docker {
+          image 'docker:24.0-cli'
+          args '-u root -v /certs/client:/certs/client:ro'
+        }
+      }
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'U', passwordVariable: 'P')]) {
           sh '''
-            docker version
-            echo "$P" | docker login -u "$U" --password-stdin
-            docker push $IMAGE:$TAG
-            docker push $IMAGE:latest
+            set -o pipefail
+            docker version                  2>&1 | tee push.log
+            echo "$P" | docker login -u "$U" --password-stdin 2>&1 | tee -a push.log
+            docker push $IMAGE:$TAG         2>&1 | tee -a push.log
+            docker push $IMAGE:latest       2>&1 | tee -a push.log
           '''
+        }
+        echo 'Image pushed to docker hub'
       }
-      echo 'Image pushed to docker hubc'
-    }
-
+    }  
   }
-  
-}
 
-post {
-    always {
-      archiveArtifacts artifacts: 'scanlog.json', allowEmptyArchive: true
+  post {
+      always {
+        archiveArtifacts artifacts: '*.log', allowEmptyArchive: true
+      }
     }
-  }
 }
 
 
